@@ -65,3 +65,16 @@ A lightweight, client-side web app that extracts and summarises top skills, tool
 
 ## Licence
 MIT
+
+## CV Matching (LinkedIn-style inspiration)
+- Paste your CV text into the CV box or upload a `.txt`/`.pdf` file (PDF text is extracted client-side via PDF.js).
+- Click “Match JD ↔ CV” or simply run Summarise with a CV present to compute a match.
+- The match score is weighted by the JD’s top skills emphasis, with bonuses for:
+  - Matching seniority level
+  - Meeting/exceeding required years of experience
+  - Holding relevant certifications (from the taxonomy)
+- The result shows a percentage bar, matched skills and missing gaps so you know what to improve.
+
+### Notes
+- PDF extraction is text-based and may miss complex layouts; for best accuracy, paste plain text.
+- No data leaves your browser.

@@ -32,7 +32,7 @@
     .card { border-radius: var(--radius); box-shadow: var(--elev); }
     .focus-ring:focus { outline: none; box-shadow: 0 0 0 var(--ring) rgba(99,102,241,.5); }
   </style>
-  <script>window.PROXY_URL = null;</script>
+  <script>window.PROXY_URL = "https://jd-summeriser-fhkbspbaw-abdalbast-khdhirs-projects.vercel.app/";</script>
 </head>
 <body class="bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100">
   <header class="max-w-6xl mx-auto p-6">
@@ -722,6 +722,7 @@
       const diffPane = document.getElementById('diffPane');
       let lastSuggestions = null;
       let templateFile = null;
+      let lastLLMText = '';
 
       function setStatus(msg, kind='info') {
         const map = { info: 'text-slate-600', success: 'text-emerald-700', error: 'text-rose-700' };
@@ -754,10 +755,15 @@
           }
           const skills = (document.getElementById('targetSkills').value||'').split(',').map(s=>s.trim()).filter(Boolean);
           if (window.PROXY_URL) {
-            const llm = await buildSuggestionsLLM(window.PROXY_URL + '/api/suggest', jdText, skills, { roles: [] });
-            // Optional: merge llm.llmText into heuristic suggestions
+            try {
+              const llm = await buildSuggestionsLLM(window.PROXY_URL.replace(/\/$/, '') + '/api/suggest', jdText, skills, { roles: [] });
+              lastLLMText = llm.llmText || '';
+            } catch (_) { lastLLMText = ''; }
+          } else {
+            lastLLMText = '';
           }
           lastSuggestions = buildSuggestions(jdText, skills, { roles: [] });
+          if (lastLLMText) mergeLLMTextIntoSuggestions(lastSuggestions, lastLLMText);
           renderSuggestions(lastSuggestions);
           setStatus('Suggestions ready.', 'success');
         } catch (e) {
@@ -772,6 +778,12 @@
 
       function renderSuggestions(s) {
         suggPane.innerHTML = '';
+        if (lastLLMText) {
+          const llmDiv = document.createElement('div');
+          llmDiv.className = 'p-3 border dark:border-slate-700 rounded bg-indigo-50 dark:bg-indigo-200/10 text-indigo-800 dark:text-indigo-200';
+          llmDiv.innerHTML = `<div class=\"font-medium mb-1\">LLM refinement</div><pre class=\"whitespace-pre-wrap text-sm\">${lastLLMText.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]))}</pre>`;
+          suggPane.appendChild(llmDiv);
+        }
         const sections = [
           ['Profile', s.profile||[]],
           ['Key Skills', (s.keySkills||[]).map(k=>`• ${k}`)],
@@ -791,6 +803,22 @@
 
       document.getElementById('tabSugg').addEventListener('click', () => { suggPane.classList.remove('hidden'); diffPane.classList.add('hidden'); });
       document.getElementById('tabDiff').addEventListener('click', () => { diffPane.classList.remove('hidden'); suggPane.classList.add('hidden'); });
+
+      function mergeLLMTextIntoSuggestions(s, text) {
+        const lines = (text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+        if (!lines.length) return s;
+        // Extract up to two non-bullet lines for profile
+        const nonBullets = lines.filter(l => !/^[-•]/.test(l)).slice(0,2);
+        s.profile = Array.from(new Set([...(s.profile||[]), ...nonBullets])).slice(0,2);
+        // Bullet-like lines → experience bullets on first role
+        const bullets = lines.filter(l => /^[-•]/.test(l)).map(l => l.replace(/^[-•]\s?/, ''));
+        if (!s.experience || !s.experience.length) s.experience = [{ role: 'Recent Experience', bullets: [] }];
+        s.experience[0].bullets = Array.from(new Set([...(s.experience[0].bullets||[]), ...bullets])).slice(0,8);
+        // Try to harvest capitalised words as potential skills
+        const maybeSkills = lines.flatMap(l => (l.match(/\b([A-Z][A-Za-z0-9+.#-]{1,}\b)/g) || []));
+        s.keySkills = Array.from(new Set([...(s.keySkills||[]), ...maybeSkills])).slice(0,12);
+        return s;
+      }
     });
     // END Tailor CV wiring
   </script>

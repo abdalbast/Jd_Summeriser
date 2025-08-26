@@ -14,6 +14,8 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='0.9em' font-size='90'%3E%F0%9F%93%9D%3C/text%3E%3C/svg%3E">
   <!-- Tailwind via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PDF.js for basic client-side PDF text extraction -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100">
   <div class="max-w-6xl mx-auto p-6">
@@ -62,6 +64,18 @@
         <input id="fileInput" type="file" accept=".txt,.html,.htm" class="p-2 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" />
       </div>
     </div>
+
+    <section class="mt-6">
+      <h2 class="text-xl font-semibold mb-2">Your CV/Resume (optional for match)</h2>
+      <div class="grid md:grid-cols-2 gap-2 items-start">
+        <textarea id="cvText" class="w-full h-40 p-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Paste your CV here (text only)"></textarea>
+        <div class="flex items-center gap-2">
+          <label for="cvFile" class="text-sm text-slate-600 whitespace-nowrap dark:text-slate-300">Upload CV (.pdf or .txt)</label>
+          <input id="cvFile" type="file" accept=".pdf,.txt" class="p-2 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" />
+          <button id="cvMatchBtn" class="px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm">Match JD ↔ CV</button>
+        </div>
+      </div>
+    </section>
 
     <section class="mt-8">
       <h2 class="text-xl font-semibold mb-2">Top Skills</h2>
@@ -281,12 +295,82 @@
       return rows.map(r => r.map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
     }
 
+    function buildSkillPresence(text) {
+      const t = ' ' + normalise(text) + ' ';
+      const present = new Set();
+      Object.entries(TAXONOMY).forEach(([, skills]) => {
+        Object.entries(skills).forEach(([canonical, synonyms]) => {
+          for (const term of synonyms) {
+            const escaped = term.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp('\\b' + escaped + '\\b', 'g');
+            if (t.match(regex)) { present.add(canonical); break; }
+          }
+        });
+      });
+      return present;
+    }
+
     function renderResults(results) {
       const container = el("results");
       container.innerHTML = "";
       if (!results || (!results.top10.length && Object.keys(results.customCounts||{}).length === 0)) {
         container.innerHTML = "<p class='text-slate-600'>No skills detected.</p>";
         return;
+      }
+
+      // CV Match (if CV provided)
+      const cvTextVal = (el('cvText') && el('cvText').value || '').trim();
+      if (cvTextVal) {
+        const matchDiv = document.createElement('div');
+        matchDiv.className = "p-4 bg-white rounded-lg border dark:bg-slate-800 dark:border-slate-700 shadow-sm md:col-span-2";
+
+        const cvPresence = buildSkillPresence(cvTextVal);
+        const weights = {};
+        let total = 0;
+        (results.top10 || []).forEach(item => { total += item.count; });
+        (results.top10 || []).forEach(item => { weights[item.skill] = total ? item.count/total : 0; });
+
+        const matched = [];
+        const missing = [];
+        let score = 0;
+        (results.top10 || []).forEach(item => {
+          if (cvPresence.has(item.skill)) { matched.push(item.skill); score += weights[item.skill]; }
+          else missing.push(item.skill);
+        });
+
+        const jdMeta = results.meta || {};
+        const cvMeta = extractMeta(cvTextVal);
+        if (jdMeta.yearsExperience != null && cvMeta.yearsExperience != null && cvMeta.yearsExperience >= jdMeta.yearsExperience) score += 0.05;
+        if (jdMeta.seniority && cvMeta.seniority && jdMeta.seniority === cvMeta.seniority) score += 0.05;
+        const certs = TAXONOMY['Certifications'] || {};
+        let certBonus = 0;
+        Object.keys(certs).forEach(c => { if (cvPresence.has(c)) certBonus += 0.03; });
+        score += Math.min(certBonus, 0.12);
+        if (score > 1) score = 1;
+        const pct = Math.round(score * 100);
+
+        matchDiv.innerHTML = `
+          <h3 class="font-semibold mb-2">CV Match</h3>
+          <div class="flex items-center gap-3">
+            <div class="w-full">
+              <div class="w-full h-3 bg-slate-200 dark:bg-slate-700 rounded overflow-hidden">
+                <div class="h-full bg-emerald-600" style="width:${pct}%"></div>
+              </div>
+            </div>
+            <div class="text-lg font-bold tabular-nums">${pct}%</div>
+          </div>
+          <div class="mt-3 grid md:grid-cols-2 gap-3 text-sm">
+            <div>
+              <div class="font-medium">Matched skills</div>
+              <div class="mt-1 flex flex-wrap gap-2">${matched.map(s => `<span class=\"px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-200/20 dark:text-emerald-200 dark:border-emerald-300/30\">${s}</span>`).join(' ') || '<span class=\"text-slate-500\">None</span>'}</div>
+            </div>
+            <div>
+              <div class="font-medium">Gaps vs JD top skills</div>
+              <div class="mt-1 flex flex-wrap gap-2">${missing.map(s => `<span class=\"px-2 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-200/20 dark:text-rose-200 dark:border-rose-300/30\">${s}</span>`).join(' ') || '<span class=\"text-slate-500\">None</span>'}</div>
+            </div>
+          </div>
+        `;
+        container.appendChild(matchDiv);
       }
 
       const meta = results.meta || {};
@@ -490,6 +574,34 @@
         const plain = file.type.includes('html') ? htmlToText(text) : text;
         el('jdText').value = plain;
       }
+      if (target && target.id === 'cvFile' && target.files && target.files[0]) {
+        const file = target.files[0];
+        try {
+          if (file.type === 'text/plain') {
+            const t = await file.text();
+            el('cvText').value = t;
+          } else if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await window['pdfjsLib'].getDocument({data: arrayBuffer}).promise;
+            let fullText = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const page = await pdf.getPage(i);
+              const content = await page.getTextContent();
+              const strings = content.items.map(it => (it.str || ''));
+              fullText += strings.join(' ') + '\n';
+            }
+            el('cvText').value = fullText.replace(/\s+/g,' ').trim();
+          }
+        } catch (err) {
+          alert('Failed to read CV file. Please try a .txt export or paste text.\n\n' + (err && err.message ? err.message : ''));
+        }
+      }
+    });
+
+    // Manual match button
+    document.getElementById('cvMatchBtn').addEventListener('click', () => {
+      runAnalysis();
+      announcer.textContent = 'JD and CV matched.';
     });
   </script>
 </body>

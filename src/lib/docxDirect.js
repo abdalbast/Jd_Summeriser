@@ -1,13 +1,25 @@
-// Minimal fallback using a simple text blob to .docx mime (placeholder)
+// Fallback using docx library to create a simple, clean document
 export async function generateDirectDocx(suggestions) {
-  const parts = [];
-  parts.push('# Profile\n' + (suggestions.profile || []).join('\n'));
-  parts.push('\n# Key Skills\n' + (suggestions.keySkills || []).join(', '));
-  (suggestions.experience || []).forEach(e => {
-    parts.push(`\n# ${e.role}\n- ` + (e.bullets || []).join('\n- '));
+  const { Document, Packer, Paragraph, HeadingLevel, TextRun } = window.docx;
+  const doc = new Document({
+    sections: [{
+      properties: {},
+      children: [
+        new Paragraph({ text: 'Profile', heading: HeadingLevel.HEADING_1 }),
+        ...((suggestions.profile||[]).map(t => new Paragraph(t))),
+        new Paragraph({ text: 'Key Skills', heading: HeadingLevel.HEADING_1 }),
+        new Paragraph((suggestions.keySkills||[]).join(', ')),
+        ...((suggestions.experience||[]).flatMap(e => [
+          new Paragraph({ text: e.role, heading: HeadingLevel.HEADING_1 }),
+          ...((e.bullets||[]).map(b => new Paragraph({ children:[ new TextRun({ text: '• ' }), new TextRun(b) ] })))
+        ])),
+        new Paragraph({ text: 'Education', heading: HeadingLevel.HEADING_1 }),
+        ...((suggestions.education||[]).map(t => new Paragraph(t))),
+        new Paragraph({ text: 'Additional', heading: HeadingLevel.HEADING_1 }),
+        ...((suggestions.additional||[]).map(t => new Paragraph(t)))
+      ]
+    }]
   });
-  parts.push('\n# Education\n' + (suggestions.education || []).join('\n'));
-  parts.push('\n# Additional\n' + (suggestions.additional || []).join('\n'));
-  const text = parts.join('\n');
-  return new Blob([text], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const blob = await Packer.toBlob(doc);
+  return blob;
 }

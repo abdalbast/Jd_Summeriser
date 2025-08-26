@@ -1,5 +1,10 @@
-// Minimal template fill with docxtemplater (if available via CDN in future)
+// Template fill with docxtemplater (expects global Docxtemplater & PizZip)
 export async function generateFromTemplate(file, data) {
-  // Placeholder: return the original file for now; progressive enhancement planned
-  return new Blob([await file.arrayBuffer()], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const arrayBuffer = await file.arrayBuffer();
+  const zip = new window.PizZip(arrayBuffer);
+  const doc = new window.docxtemplater().loadZip(zip);
+  doc.setData(data);
+  try { doc.render(); } catch (e) { throw new Error('Template render error: ' + (e.message||'')); }
+  const out = doc.getZip().generate({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  return out;
 }

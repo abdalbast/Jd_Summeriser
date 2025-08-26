@@ -462,7 +462,9 @@
           const text = htmlToText(html);
           el("jdText").value = text;
           lastErr = null;
-          setFetchStatus('Loaded successfully.', 'success');
+          setFetchStatus('Loaded successfully. Analysing…', 'info');
+          // Auto-run summarisation after successful fetch
+          await Promise.resolve().then(runAnalysis);
           break;
         } catch (e) {
           lastErr = e;

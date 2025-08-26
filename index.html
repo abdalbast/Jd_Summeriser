@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>JD Skill Summariser</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Tailwind via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div class="max-w-6xl mx-auto p-6">
+    <header class="mb-6">
+      <h1 class="text-2xl md:text-3xl font-bold">Job Description → Top Skills</h1>
+      <p class="text-sm text-slate-600">Paste a JD or provide a link and summarise the top emphasised skills.</p>
+    </header>
+
+    <textarea id="jdText" class="w-full h-64 p-3 rounded border border-slate-300" placeholder="Paste the job description here..."></textarea>
+
+    <div class="mt-4 flex items-center gap-2">
+      <button id="analyseBtn" class="px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700">Summarise</button>
+      <button id="clearBtn" class="px-4 py-2 rounded bg-slate-200 hover:bg-slate-300">Clear</button>
+    </div>
+
+    <div class="mt-6">
+      <label class="block text-sm font-medium mb-2">Or fetch from URL (CORS permitting)</label>
+      <div class="flex gap-2">
+        <input id="jdUrl" type="url" class="flex-1 p-2 rounded border border-slate-300" placeholder="https://example.com/job-posting" />
+        <button id="fetchBtn" class="px-4 py-2 rounded bg-slate-800 text-white hover:bg-black">Fetch</button>
+      </div>
+      <p class="text-xs text-slate-500 mt-2">Note: Some sites block cross-origin fetches. If it fails, please copy-paste instead.</p>
+    </div>
+
+    <div class="mt-4 grid md:grid-cols-2 gap-2 items-center">
+      <div class="flex items-center gap-2">
+        <label for="customTerms" class="text-sm text-slate-600 whitespace-nowrap">Custom terms (comma-separated)</label>
+        <input id="customTerms" type="text" class="flex-1 p-2 rounded border border-slate-300" placeholder="e.g. NLP, GenAI, ETL" />
+      </div>
+      <div class="flex items-center gap-2">
+        <label for="fileInput" class="text-sm text-slate-600 whitespace-nowrap">Upload file</label>
+        <input id="fileInput" type="file" accept=".txt,.html,.htm" class="p-2 rounded border border-slate-300" />
+      </div>
+    </div>
+
+    <section class="mt-8">
+      <h2 class="text-xl font-semibold mb-2">Top Skills</h2>
+      <div id="results" class="grid md:grid-cols-2 gap-4"></div>
+    </section>
+  </div>
+
+  <script>
+    // Expanded taxonomy with synonyms mapped to canonical skills and categories
+    const TAXONOMY = {
+      "Programming": {
+        "Python": ["python"],
+        "R": [" r "," r-language"," rstudio"],
+        "SQL": ["sql","t-sql","postgresql","mysql","sqlite","snowflake sql","bigquery sql"],
+        "JavaScript": ["javascript","js","ecmascript"],
+        "TypeScript": ["typescript","ts"],
+        "Java": ["java"],
+        "C#": ["c#","dotnet",".net"],
+        "C++": ["c++","cpp"],
+        "Go": ["golang"," go "],
+        "Scala": ["scala"]
+      },
+      "Data & ML": {
+        "Pandas": ["pandas"],
+        "NumPy": ["numpy"],
+        "scikit-learn": ["scikit-learn","sklearn"],
+        "TensorFlow": ["tensorflow","tf"],
+        "PyTorch": ["pytorch","torch"],
+        "XGBoost": ["xgboost"],
+        "LightGBM": ["lightgbm","lgbm"],
+        "Tableau": ["tableau"],
+        "Power BI": ["power bi","powerbi"],
+        "Excel": ["excel","microsoft excel"],
+        "Looker": ["looker","looker studio","data studio"],
+        "dbt": ["dbt","data build tool"]
+      },
+      "Cloud & DevOps": {
+        "AWS": ["aws","amazon web services"],
+        "Azure": ["azure","microsoft azure"],
+        "GCP": ["gcp","google cloud","google cloud platform"],
+        "Docker": ["docker"],
+        "Kubernetes": ["kubernetes","k8s"],
+        "Linux": ["linux","ubuntu","red hat","rhel"],
+        "Git": ["git","github","gitlab","bitbucket"],
+        "Airflow": ["airflow","apache airflow"],
+        "Kafka": ["kafka","apache kafka"],
+        "Spark": ["spark","apache spark"]
+      },
+      "Methodologies": {
+        "Agile": ["agile"],
+        "Scrum": ["scrum"],
+        "Kanban": ["kanban"],
+        "CI/CD": ["ci/cd","continuous integration","continuous delivery","continuous deployment"],
+        "TDD": ["tdd","test-driven development"]
+      },
+      "Soft Skills": {
+        "Communication": ["communication","communicator","presenting","presentation"],
+        "Teamwork": ["teamwork","collaboration","collaborative","cross-functional"],
+        "Problem solving": ["problem solving","analytical","analytically"],
+        "Leadership": ["leadership","mentor","coaching"],
+        "Stakeholder management": ["stakeholder management","stakeholders"]
+      },
+      "Databases": {
+        "PostgreSQL": ["postgresql","postgres"],
+        "MySQL": ["mysql"],
+        "SQL Server": ["sql server","mssql","t-sql"],
+        "Snowflake": ["snowflake"],
+        "BigQuery": ["bigquery"],
+        "Redshift": ["redshift"]
+      },
+      "Certifications": {
+        "AWS Certified": ["aws certified","solutions architect associate","solutions architect professional","developer associate","sysops"],
+        "Azure Certified": ["azure certified","az-900","dp-900","dp-203"],
+        "GCP Professional": ["google professional","professional data engineer","professional cloud architect"],
+        "PMP": ["pmp","project management professional"],
+        "PRINCE2": ["prince2"],
+        "ITIL": ["itil"],
+        "Scrum Master": ["scrum master","psm","csm"]
+      },
+      "Education": {
+        "BSc/BA": ["bsc","bachelor's","bachelors","b.a.","ba"],
+        "MSc/MA": ["msc","master's","masters","m.a.","ma"],
+        "PhD": ["phd","doctorate","dphil"],
+        "STEM degree": ["computer science","statistics","mathematics","engineering","data science"]
+      },
+      "Security": {
+        "Security clearance": ["security clearance","sc clearance","dv clearance"],
+        "ISO27001": ["iso 27001","iso27001"],
+        "SOC 2": ["soc 2","soc2"]
+      }
+    };
+
+    const el = id => document.getElementById(id);
+
+    function normalise(text) {
+      return text
+        .toLowerCase()
+        .replace(/\u2013|\u2014/g, '-')
+        .replace(/[^a-z0-9+.#\/\-\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function htmlToText(html) {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        doc.querySelectorAll('script,style').forEach(n => n.remove());
+        const text = (doc.body && doc.body.textContent) ? doc.body.textContent : '';
+        return text.replace(/\s+/g, ' ').trim();
+      } catch (_) {
+        // Fallback: very basic strip
+        return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+    }
+
+    function buildSkillCounts(text) {
+      const countsByCategory = {};
+      const flatTop = [];
+      const corpus = ' ' + normalise(text) + ' ';
+      Object.entries(TAXONOMY).forEach(([category, skills]) => {
+        countsByCategory[category] = [];
+        Object.entries(skills).forEach(([canonical, synonyms]) => {
+          let count = 0;
+          synonyms.forEach(term => {
+            const escaped = term.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp('\\b' + escaped + '\\b', 'g');
+            const matches = corpus.match(regex);
+            if (matches) count += matches.length;
+          });
+          if (count > 0) {
+            countsByCategory[category].push({ skill: canonical, count });
+            flatTop.push({ skill: canonical, count, category });
+          }
+        });
+        countsByCategory[category].sort((a,b) => b.count - a.count);
+      });
+      flatTop.sort((a,b) => b.count - a.count);
+      return { countsByCategory, top10: flatTop.slice(0, 10) };
+    }
+
+    function extractMeta(text) {
+      const t = normalise(text);
+      // Experience years
+      const yearsMatches = [...t.matchAll(/(\d{1,2})\+?\s*(years|yrs|y)/g)];
+      const years = yearsMatches.map(m => parseInt(m[1], 10)).filter(n => !Number.isNaN(n));
+      const maxYears = years.length ? Math.max(...years) : null;
+
+      // Seniority
+      const seniorityOrder = ['intern','junior','mid','senior','lead','principal','staff','manager','director','head'];
+      const seniorityMap = {
+        intern: /(intern|placement)/,
+        junior: /(junior|entry[-\s]?level)/,
+        mid: /(mid|intermediate)/,
+        senior: /(senior|sr\b)/,
+        lead: /(lead|leading|tech lead)/,
+        principal: /(principal)/,
+        staff: /(staff engineer)/,
+        manager: /(manager|management)/,
+        director: /(director|head of)/,
+        head: /(head of)/
+      };
+      const seniorities = seniorityOrder.filter(key => seniorityMap[key].test(t));
+      const seniority = seniorities.length ? seniorities[seniorities.length - 1] : null;
+
+      // Education already extracted via taxonomy as categories; additionally try degree subjects
+      const subjects = [];
+      const subjectMatches = [...t.matchAll(/degree\s+in\s+([a-z\s]{3,40})/g)];
+      subjectMatches.forEach(m => subjects.push(m[1].trim()));
+
+      return { yearsExperience: maxYears, seniority, degreeSubjects: subjects };
+    }
+
+    function summariseJD(text, customTermsArray) {
+      const { countsByCategory, top10 } = buildSkillCounts(text);
+      // Custom terms
+      const customCounts = {};
+      if (customTermsArray && customTermsArray.length) {
+        const t = ' ' + normalise(text) + ' ';
+        customTermsArray.forEach(term => {
+          const raw = term.trim();
+          if (!raw) return;
+          const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp('\\b' + escaped + '\\b', 'g');
+          const matches = t.match(regex);
+          if (matches) customCounts[raw] = matches.length;
+        });
+      }
+      const meta = extractMeta(text);
+      return { countsByCategory, top10, customCounts, meta };
+    }
+
+    function renderResults(results) {
+      const container = el("results");
+      container.innerHTML = "";
+      if (!results || (!results.top10.length && Object.keys(results.customCounts||{}).length === 0)) {
+        container.innerHTML = "<p class='text-slate-600'>No skills detected.</p>";
+        return;
+      }
+
+      // Meta summary panel
+      const meta = results.meta || {};
+      const metaDiv = document.createElement('div');
+      metaDiv.className = "p-4 bg-white rounded-lg border";
+      metaDiv.innerHTML = `
+        <h3 class="font-semibold mb-2">Summary</h3>
+        <div class="text-sm text-slate-600 space-y-1">
+          <div><span class="font-medium">Seniority:</span> ${meta.seniority ? meta.seniority : 'Not stated'}</div>
+          <div><span class="font-medium">Years of experience:</span> ${meta.yearsExperience != null ? meta.yearsExperience : 'Not stated'}</div>
+          ${meta.degreeSubjects && meta.degreeSubjects.length ? `<div><span class="font-medium">Degree subjects:</span> ${meta.degreeSubjects.join(', ')}</div>` : ''}
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button id="copyBtn" class="px-3 py-1.5 rounded bg-slate-800 text-white text-sm hover:bg-black">Copy</button>
+          <button id="exportBtn" class="px-3 py-1.5 rounded bg-slate-200 text-sm hover:bg-slate-300">Export JSON</button>
+        </div>
+      `;
+      container.appendChild(metaDiv);
+
+      // Top skills panel
+      if (results.top10.length) {
+        const topDiv = document.createElement('div');
+        topDiv.className = "p-4 bg-white rounded-lg border";
+        topDiv.innerHTML = `<h3 class=\"font-semibold mb-2\">Top Skills</h3>`;
+        const list = document.createElement('div');
+        list.className = "flex flex-wrap gap-2";
+        results.top10.forEach((item, idx) => {
+          const chip = document.createElement('span');
+          chip.className = "inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm";
+          chip.textContent = `${idx+1}. ${item.skill} (${item.count})`;
+          list.appendChild(chip);
+        });
+        topDiv.appendChild(list);
+        container.appendChild(topDiv);
+      }
+
+      // Category panels
+      Object.entries(results.countsByCategory).forEach(([category, items]) => {
+        if (!items.length) return;
+        const div = document.createElement('div');
+        div.className = "p-4 bg-white rounded-lg border";
+        div.innerHTML = `<h3 class=\"font-semibold mb-2\">${category}</h3>`;
+        const list = document.createElement('div');
+        list.className = "flex flex-wrap gap-2";
+        items.forEach(({skill, count}) => {
+          const chip = document.createElement('span');
+          chip.className = "inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-100 text-slate-700 border text-sm";
+          chip.textContent = `${skill} (${count})`;
+          list.appendChild(chip);
+        });
+        div.appendChild(list);
+        container.appendChild(div);
+      });
+
+      // Wire copy and export
+      const payload = JSON.stringify(results, null, 2);
+      const copyBtn = document.getElementById('copyBtn');
+      if (copyBtn) copyBtn.onclick = async () => {
+        try { await navigator.clipboard.writeText(payload); copyBtn.textContent = 'Copied'; setTimeout(() => copyBtn.textContent = 'Copy', 1200); } catch {}
+      };
+      const exportBtn = document.getElementById('exportBtn');
+      if (exportBtn) exportBtn.onclick = () => {
+        const blob = new Blob([payload], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'jd-summary.json'; a.click();
+        URL.revokeObjectURL(url);
+      };
+    }
+
+    function getCustomTerms() {
+      const customEl = el('customTerms');
+      const raw = ((customEl && customEl.value) || '').split(',');
+      return raw.map(s => s.trim()).filter(Boolean);
+    }
+
+    async function runAnalysis() {
+      const jd = el("jdText").value;
+      const results = summariseJD(jd, getCustomTerms());
+      renderResults(results);
+    }
+
+    el("analyseBtn").addEventListener("click", runAnalysis);
+
+    el("clearBtn").addEventListener("click", () => {
+      el("jdText").value = "";
+      renderResults({ top10: [], countsByCategory: {}, customCounts: {}, meta: {} });
+    });
+
+    el("fetchBtn").addEventListener("click", async () => {
+      const url = el("jdUrl").value.trim();
+      if (!url) return;
+      el("fetchBtn").disabled = true;
+      el("fetchBtn").textContent = "Fetching…";
+      try {
+        const res = await fetch(url, {mode: "cors"});
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const html = await res.text();
+        const text = htmlToText(html);
+        el("jdText").value = text;
+      } catch (e) {
+        alert("Fetch failed (likely CORS). Please copy-paste instead.\n\n" + e.message);
+      } finally {
+        el("fetchBtn").disabled = false;
+        el("fetchBtn").textContent = "Fetch";
+      }
+    });
+
+    // File upload support (.txt / .html)
+    document.addEventListener('change', async (e) => {
+      const target = e.target;
+      if (target && target.id === 'fileInput' && target.files && target.files[0]) {
+        const file = target.files[0];
+        const text = await file.text();
+        const plain = file.type.includes('html') ? htmlToText(text) : text;
+        el('jdText').value = plain;
+      }
+    });
+  </script>
+</body>
+</html>

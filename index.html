@@ -16,6 +16,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- PDF.js for basic client-side PDF text extraction -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <!-- Mammoth.js for client-side .docx to text -->
+  <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100">
   <div class="max-w-6xl mx-auto p-6">
@@ -70,8 +72,8 @@
       <div class="grid md:grid-cols-2 gap-2 items-start">
         <textarea id="cvText" class="w-full h-40 p-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Paste your CV here (text only)"></textarea>
         <div class="flex items-center gap-2">
-          <label for="cvFile" class="text-sm text-slate-600 whitespace-nowrap dark:text-slate-300">Upload CV (.pdf or .txt)</label>
-          <input id="cvFile" type="file" accept=".pdf,.txt" class="p-2 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" />
+          <label for="cvFile" class="text-sm text-slate-600 whitespace-nowrap dark:text-slate-300">Upload CV (.pdf / .docx / .txt)</label>
+          <input id="cvFile" type="file" accept=".pdf,.docx,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="p-2 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" />
           <button id="cvMatchBtn" class="px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm">Match JD ↔ CV</button>
         </div>
       </div>
@@ -580,6 +582,10 @@
           if (file.type === 'text/plain') {
             const t = await file.text();
             el('cvText').value = t;
+          } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || /\.docx$/i.test(file.name)) {
+            const arrayBuffer = await file.arrayBuffer();
+            const res = await window.mammoth.extractRawText({arrayBuffer});
+            el('cvText').value = (res && res.value ? res.value : '').replace(/\s+/g,' ').trim();
           } else if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
             const arrayBuffer = await file.arrayBuffer();
             const pdf = await window['pdfjsLib'].getDocument({data: arrayBuffer}).promise;

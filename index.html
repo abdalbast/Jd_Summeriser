@@ -374,21 +374,29 @@
       renderResults({ top10: [], countsByCategory: {}, customCounts: {}, meta: {} });
     });
 
-    function buildProxyUrl(raw) {
+    function buildProxyUrls(raw) {
+      // Returns an array of proxy URLs to try
       try {
         const u = new URL(raw);
+        const proto = (u.protocol || 'https:').replace(':',''); // 'http' | 'https'
         const path = u.pathname + (u.search || "") + (u.hash || "");
-        return `https://r.jina.ai/http://${u.host}${path}`;
-      } catch (_) { return raw; }
+        const base = u.host + path;
+        const urls = [
+          `https://r.jina.ai/${proto}://${base}`,
+          // Try the alternate protocol as well
+          `https://r.jina.ai/${proto === 'https' ? 'http' : 'https'}://${base}`
+        ];
+        return urls;
+      } catch (_) { return []; }
     }
 
     el("fetchBtn").addEventListener("click", async () => {
       const raw = el("jdUrl").value.trim();
       if (!raw) return;
       const wantProxy = !!document.getElementById('useProxy')?.checked;
-      const tryUrls = [];
+      let tryUrls = [];
       if (wantProxy) {
-        tryUrls.push(buildProxyUrl(raw));
+        tryUrls = tryUrls.concat(buildProxyUrls(raw));
       }
       tryUrls.push(raw); // always try direct as well (or vice versa)
 
@@ -397,7 +405,10 @@
       let lastErr = null;
       for (const u of tryUrls) {
         try {
-          const res = await fetch(u, {mode: "cors"});
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 12000);
+          const res = await fetch(u, {mode: "cors", signal: controller.signal});
+          clearTimeout(timer);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const html = await res.text();
           const text = htmlToText(html);

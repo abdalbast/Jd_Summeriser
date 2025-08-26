@@ -18,72 +18,95 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <!-- Mammoth.js for client-side .docx to text -->
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+  <style>
+    :root { --ring: 2px; --radius: 10px; --elev: 0 1px 2px rgba(0,0,0,.06); --dur: 160ms; }
+    @media (prefers-reduced-motion: reduce) { * { animation-duration: 1ms !important; transition-duration: 1ms !important; } }
+    .card { border-radius: var(--radius); box-shadow: var(--elev); }
+    .focus-ring:focus { outline: none; box-shadow: 0 0 0 var(--ring) rgba(99,102,241,.5); }
+  </style>
 </head>
 <body class="bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100">
-  <div class="max-w-6xl mx-auto p-6">
-    <header class="mb-6 flex items-center justify-between">
+  <header class="max-w-6xl mx-auto p-6">
+    <div class="flex items-center justify-between">
       <div>
         <h1 class="text-2xl md:text-3xl font-bold tracking-tight">Job Description → Top Skills</h1>
-        <p class="text-sm text-slate-600 dark:text-slate-300">Paste a JD or provide a link and summarise the top emphasised skills.</p>
+        <p class="text-sm text-slate-600 dark:text-slate-300">Paste a JD or provide a link. Optionally upload a CV to see JD ↔ CV match.</p>
       </div>
       <button id="themeToggle" class="px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-sm hover:bg-slate-100 dark:hover:bg-slate-800 shadow-sm" aria-label="Toggle dark mode">🌙</button>
-    </header>
+    </div>
+  </header>
+  <main class="max-w-6xl mx-auto p-6" role="main">
 
-    <textarea id="jdText" class="w-full h-64 p-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Paste the job description here..."></textarea>
+    <label for="jdText" class="block text-sm font-medium mb-1">Job description</label>
+    <div class="relative">
+      <textarea id="jdText" class="w-full h-64 max-h-[60vh] p-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm focus-ring overflow-auto" placeholder="Paste the job description here..." aria-describedby="jdHelp"></textarea>
+      <div id="jdChar" class="absolute bottom-2 right-3 text-xs text-slate-500">0 chars</div>
+    </div>
+    <p id="jdHelp" class="mt-1 text-xs text-slate-500">Large posts will scroll inside the box. Press Enter/Cmd+Enter to summarise.</p>
 
-    <div class="mt-4 flex items-center gap-2">
-      <button id="analyseBtn" class="px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm">Summarise</button>
-      <button id="clearBtn" class="px-4 py-2 rounded bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 shadow-sm">Clear</button>
-      <span class="text-xs text-slate-500 ml-2">Enter/Cmd+Enter: Summarise · Esc: Clear</span>
+    <div class="sticky top-0 z-10 -mx-6 px-6 py-3 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur border-b border-slate-200/60 dark:border-slate-700/60 mt-4">
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="analyseBtn" class="h-11 px-4 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm">Summarise</button>
+        <button id="clearBtn" class="h-11 px-4 rounded bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 shadow-sm">Clear</button>
+        <div class="ml-auto flex items-center gap-2">
+          <button id="fetchBtn" class="h-11 px-4 rounded bg-slate-800 text-white hover:bg-black inline-flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+            <span>Fetch</span>
+            <svg id="fetchSpinner" class="hidden animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
+          </button>
+        </div>
+      </div>
+      <p class="mt-1 text-xs text-slate-500">Enter/Cmd+Enter: Summarise · Esc: Clear</p>
     </div>
 
-    <div class="mt-6">
-      <label class="block text-sm font-medium mb-2">Or fetch from URL (CORS permitting)</label>
+    <div class="mt-6" aria-labelledby="fetchLabel">
+      <label id="fetchLabel" class="block text-sm font-medium mb-2">Or fetch from URL</label>
       <div class="flex gap-2 items-center flex-wrap">
-        <input id="jdUrl" type="url" class="flex-1 p-2 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="https://example.com/job-posting" />
-        <label class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+        <input id="jdUrl" type="url" class="flex-1 h-11 px-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm focus-ring" placeholder="https://example.com/job-posting" inputmode="url" aria-describedby="fetchHelp" />
+        <label class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300" title="Read-only proxy that bypasses many CORS blocks.">
           <input id="useProxy" type="checkbox" class="rounded border-slate-300 dark:border-slate-600" checked /> Use CORS proxy
         </label>
-        <button id="fetchBtn" class="px-4 py-2 rounded bg-slate-800 text-white hover:bg-black inline-flex items-center gap-2">
-          <span>Fetch</span>
-          <svg id="fetchSpinner" class="hidden animate-spin h-4 w-4 text-white" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-          </svg>
-        </button>
       </div>
-      <p id="fetchStatus" class="text-xs mt-2"></p>
-      <p class="text-xs text-slate-500 mt-2">Note: Some sites block cross-origin fetches. If it fails, please copy-paste instead.</p>
+      <p id="fetchStatus" class="text-xs mt-2" aria-live="polite"></p>
+      <p id="fetchHelp" class="text-xs text-slate-500 mt-2">This site may block cross-origin requests. Try copy-paste or leave the CORS proxy on.</p>
     </div>
 
-    <div class="mt-4 grid md:grid-cols-2 gap-2 items-center">
+    <div class="mt-4 grid md:grid-cols-2 gap-2 items-center" aria-label="Options">
       <div class="flex items-center gap-2">
         <label for="customTerms" class="text-sm text-slate-600 whitespace-nowrap dark:text-slate-300">Custom terms (comma-separated)</label>
-        <input id="customTerms" type="text" class="flex-1 p-2 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" placeholder="e.g. NLP, GenAI, ETL" />
+        <input id="customTerms" type="text" class="flex-1 h-11 px-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus-ring" placeholder="e.g. NLP, GenAI, ETL" />
       </div>
       <div class="flex items-center gap-2">
         <label for="fileInput" class="text-sm text-slate-600 whitespace-nowrap dark:text-slate-300">Upload file</label>
-        <input id="fileInput" type="file" accept=".txt,.html,.htm" class="p-2 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" />
+        <input id="fileInput" type="file" accept=".txt,.html,.htm" class="h-11 px-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus-ring" />
       </div>
     </div>
 
-    <section class="mt-6">
-      <h2 class="text-xl font-semibold mb-2">Your CV/Resume (optional for match)</h2>
+    <section class="mt-6" aria-labelledby="cvLabel">
+      <h2 id="cvLabel" class="text-xl font-semibold mb-2">Your CV/Resume (optional for match)</h2>
       <div class="grid md:grid-cols-2 gap-2 items-start">
-        <textarea id="cvText" class="w-full h-40 p-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Paste your CV here (text only)"></textarea>
+        <textarea id="cvText" class="w-full h-40 max-h-[40vh] p-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm focus-ring overflow-auto" placeholder="Paste your CV here (text only)"></textarea>
         <div class="flex items-center gap-2">
           <label for="cvFile" class="text-sm text-slate-600 whitespace-nowrap dark:text-slate-300">Upload CV (.pdf / .docx / .txt)</label>
-          <input id="cvFile" type="file" accept=".pdf,.docx,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="p-2 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" />
+          <input id="cvFile" type="file" accept=".pdf,.docx,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="h-11 px-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus-ring" />
           <button id="cvMatchBtn" class="px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm">Match JD ↔ CV</button>
         </div>
       </div>
     </section>
 
-    <section class="mt-8">
-      <h2 class="text-xl font-semibold mb-2">Top Skills</h2>
+    <section class="mt-8" aria-labelledby="resultsLabel">
+      <h2 id="resultsLabel" class="text-xl font-semibold mb-2">Top Skills</h2>
+      <div id="resultsEmpty" class="hidden card p-6 bg-white dark:bg-slate-800 border dark:border-slate-700 text-slate-600 dark:text-slate-300">
+        <p class="font-medium">Ready to summarise</p>
+        <p class="text-sm mt-1">Paste a job description, fetch a URL, or upload a file to begin.</p>
+      </div>
+      <div id="resultsSkeleton" class="hidden grid md:grid-cols-2 gap-4">
+        <div class="card p-4 bg-white dark:bg-slate-800 border dark:border-slate-700 animate-pulse h-28"></div>
+        <div class="card p-4 bg-white dark:bg-slate-800 border dark:border-slate-700 animate-pulse h-28"></div>
+      </div>
       <div id="results" class="grid md:grid-cols-2 gap-4"></div>
     </section>
-  </div>
+  </main>
+  <footer class="max-w-6xl mx-auto px-6 py-8 text-xs text-slate-500">Built with HTML, Tailwind, and vanilla JS. All analysis runs in your browser.</footer>
 
   <script>
     // ARIA live region for generic announcements
@@ -467,6 +490,34 @@
       const results = summariseJD(jd, getCustomTerms());
       renderResults(results);
     }
+
+    function showEmpty() {
+      const e = document.getElementById('resultsEmpty');
+      const s = document.getElementById('resultsSkeleton');
+      if (e) e.classList.remove('hidden');
+      if (s) s.classList.add('hidden');
+    }
+
+    function toggleLoading(isLoading) {
+      const e = document.getElementById('resultsEmpty');
+      const s = document.getElementById('resultsSkeleton');
+      if (e) e.classList.add('hidden');
+      if (!s) return;
+      if (isLoading) s.classList.remove('hidden'); else s.classList.add('hidden');
+      const analyse = document.getElementById('analyseBtn');
+      const fetchB = document.getElementById('fetchBtn');
+      if (analyse) analyse.disabled = !!isLoading;
+      if (fetchB) fetchB.disabled = !!isLoading;
+    }
+
+    function updateCharCount() {
+      const v = (el('jdText')?.value || '');
+      const c = document.getElementById('jdChar');
+      if (c) c.textContent = v.length + ' chars';
+    }
+    document.getElementById('jdText').addEventListener('input', updateCharCount);
+    updateCharCount();
+    showEmpty();
 
     el("analyseBtn").addEventListener("click", runAnalysis);
 

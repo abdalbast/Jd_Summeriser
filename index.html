@@ -43,7 +43,7 @@
       </div>
       <button id="themeToggle" class="px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-sm hover:bg-slate-100 dark:hover:bg-slate-800 shadow-sm" aria-label="Toggle dark mode">🌙</button>
     </div>
-  </header>
+    </header>
   <main class="max-w-6xl mx-auto p-6" role="main">
 
     <label for="jdText" class="block text-sm font-medium mb-1">Job description</label>
@@ -146,18 +146,23 @@
           <p id="tailorStatus" class="text-xs mt-2"></p>
         </div>
         <div class="card p-4 bg-white dark:bg-slate-800 border dark:border-slate-700">
-          <div class="flex items-center gap-4 text-sm border-b dark:border-slate-700 mb-3">
-            <button id="tabSugg" class="py-2 px-2 border-b-2 border-indigo-600">Suggestions</button>
-            <button id="tabDiff" class="py-2 px-2">Diff Preview</button>
+          <div class="flex items-center gap-4 text-sm border-b dark:border-slate-700 mb-3" role="tablist" aria-label="Tailor CV results">
+            <button id="tabSugg" role="tab" aria-selected="true" tabindex="0" class="py-2 px-2 border-b-2 border-indigo-600">Suggestions</button>
+            <button id="tabDiff" role="tab" aria-selected="false" tabindex="-1" class="py-2 px-2">Diff Preview</button>
+            <div class="ml-auto flex items-center gap-2">
+              <button id="copySuggJson" class="h-8 px-2 rounded bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 text-xs">Copy JSON</button>
+              <button id="copyLLM" class="h-8 px-2 rounded bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 text-xs">Copy LLM text</button>
+            </div>
           </div>
-          <div id="suggPane" class="space-y-3 text-sm"></div>
-          <div id="diffPane" class="hidden space-y-3 text-sm"></div>
+          <div id="suggPane" role="tabpanel" aria-labelledby="tabSugg" class="space-y-3 text-sm"></div>
+          <div id="diffPane" role="tabpanel" aria-labelledby="tabDiff" class="hidden space-y-3 text-sm"></div>
         </div>
-      </div>
+  </div>
     </section>
     <!-- END UI PASS -->
   </main>
   <footer class="max-w-6xl mx-auto px-6 py-8 text-xs text-slate-500">Built with HTML, Tailwind, and vanilla JS. All analysis runs in your browser.</footer>
+  <button id="backToTop" aria-label="Back to top" class="hidden fixed bottom-5 right-5 h-11 w-11 rounded-full bg-slate-800 text-white dark:bg-slate-700 shadow-sm hover:bg-black focus-ring">↑</button>
 
   <script>
     // ARIA live region for generic announcements
@@ -570,6 +575,12 @@
     updateCharCount();
     showEmpty();
 
+    // Back to top
+    const btt = document.getElementById('backToTop');
+    function onScroll(){ if (window.scrollY > 400) btt.classList.remove('hidden'); else btt.classList.add('hidden'); }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    btt.addEventListener('click', () => { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) window.scrollTo(0,0); else window.scrollTo({ top:0, behavior:'smooth' }); });
+
     el("analyseBtn").addEventListener("click", runAnalysis);
 
     // Keyboard shortcuts: Enter/Cmd+Enter summarise; Esc clear
@@ -645,16 +656,16 @@
           const timer = setTimeout(() => controller.abort(), 12000);
           const res = await fetch(u, {mode: "cors", signal: controller.signal});
           clearTimeout(timer);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const html = await res.text();
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const html = await res.text();
           const text = htmlToText(html);
-          el("jdText").value = text;
+        el("jdText").value = text;
           lastErr = null;
           setFetchStatus('Loaded successfully. Analysing…', 'info');
           // Auto-run summarisation after successful fetch
           await Promise.resolve().then(runAnalysis);
           break;
-        } catch (e) {
+      } catch (e) {
           lastErr = e;
           // Keep trying next URL
         }
@@ -663,8 +674,8 @@
         const msg = (lastErr.name === 'AbortError') ? 'Timed out fetching the page.' : (lastErr && lastErr.message ? lastErr.message : 'Unknown error');
         setFetchStatus(`Fetch failed (likely CORS or blocked). ${msg}. Try enabling the proxy or copy-paste instead.`, 'error');
       }
-      el("fetchBtn").disabled = false;
-      el("fetchBtn").textContent = "Fetch";
+        el("fetchBtn").disabled = false;
+        el("fetchBtn").textContent = "Fetch";
       el("fetchBtn").removeAttribute('aria-busy');
       if (spinner) spinner.classList.add('hidden');
     });
@@ -803,6 +814,30 @@
 
       document.getElementById('tabSugg').addEventListener('click', () => { suggPane.classList.remove('hidden'); diffPane.classList.add('hidden'); });
       document.getElementById('tabDiff').addEventListener('click', () => { diffPane.classList.remove('hidden'); suggPane.classList.add('hidden'); });
+
+      // ARIA tabs keyboard support
+      const tabs = [document.getElementById('tabSugg'), document.getElementById('tabDiff')];
+      function activateTab(i){
+        tabs.forEach((t,idx)=>{ t.setAttribute('aria-selected', String(idx===i)); t.tabIndex = idx===i?0:-1; });
+        if (i===0){ suggPane.classList.remove('hidden'); diffPane.classList.add('hidden'); }
+        else { diffPane.classList.remove('hidden'); suggPane.classList.add('hidden'); }
+        tabs[i].focus();
+      }
+      tabs.forEach((t,idx)=> t.addEventListener('keydown', (e)=>{
+        if (e.key==='ArrowRight' || e.key==='ArrowLeft') {
+          e.preventDefault();
+          const ni = (idx + (e.key==='ArrowRight'?1:-1) + tabs.length) % tabs.length;
+          activateTab(ni);
+        }
+      }));
+
+      // Copy buttons
+      document.getElementById('copySuggJson').addEventListener('click', async ()=>{
+        try { await navigator.clipboard.writeText(JSON.stringify(lastSuggestions||{}, null, 2)); } catch {}
+      });
+      document.getElementById('copyLLM').addEventListener('click', async ()=>{
+        try { await navigator.clipboard.writeText(lastLLMText||''); } catch {}
+      });
 
       function mergeLLMTextIntoSuggestions(s, text) {
         const lines = (text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);

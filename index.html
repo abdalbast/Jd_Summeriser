@@ -37,10 +37,11 @@
       <div class="flex gap-2 items-center flex-wrap">
         <input id="jdUrl" type="url" class="flex-1 p-2 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" placeholder="https://example.com/job-posting" />
         <label class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-          <input id="useProxy" type="checkbox" class="rounded border-slate-300 dark:border-slate-600" /> Use CORS proxy
+          <input id="useProxy" type="checkbox" class="rounded border-slate-300 dark:border-slate-600" checked /> Use CORS proxy
         </label>
         <button id="fetchBtn" class="px-4 py-2 rounded bg-slate-800 text-white hover:bg-black">Fetch</button>
       </div>
+      <p id="fetchStatus" class="text-xs mt-2"></p>
       <p class="text-xs text-slate-500 mt-2">Note: Some sites block cross-origin fetches. If it fails, please copy-paste instead.</p>
     </div>
 
@@ -390,10 +391,25 @@
       } catch (_) { return []; }
     }
 
+    function setFetchStatus(message, kind) {
+      const s = document.getElementById('fetchStatus');
+      if (!s) return;
+      const base = 'text-xs';
+      const classes = {
+        info: 'text-slate-600 dark:text-slate-300',
+        success: 'text-emerald-700 dark:text-emerald-400',
+        warn: 'text-amber-700 dark:text-amber-400',
+        error: 'text-rose-700 dark:text-rose-400'
+      };
+      s.className = base + ' ' + (classes[kind] || classes.info);
+      s.textContent = message || '';
+    }
+
     el("fetchBtn").addEventListener("click", async () => {
       const raw = el("jdUrl").value.trim();
       if (!raw) return;
-      const wantProxy = !!document.getElementById('useProxy')?.checked;
+      // Default to proxy unless explicitly unticked
+      const wantProxy = (document.getElementById('useProxy')?.checked !== false);
       let tryUrls = [];
       if (wantProxy) {
         tryUrls = tryUrls.concat(buildProxyUrls(raw));
@@ -402,6 +418,8 @@
 
       el("fetchBtn").disabled = true;
       el("fetchBtn").textContent = "Fetching…";
+      el("fetchBtn").setAttribute('aria-busy','true');
+      setFetchStatus('Fetching job description…', 'info');
       let lastErr = null;
       for (const u of tryUrls) {
         try {
@@ -414,16 +432,20 @@
           const text = htmlToText(html);
           el("jdText").value = text;
           lastErr = null;
+          setFetchStatus('Loaded successfully.', 'success');
           break;
         } catch (e) {
           lastErr = e;
+          // Keep trying next URL
         }
       }
       if (lastErr) {
-        alert("Fetch failed (likely CORS). Please copy-paste instead.\n\n" + lastErr.message);
+        const msg = (lastErr.name === 'AbortError') ? 'Timed out fetching the page.' : (lastErr && lastErr.message ? lastErr.message : 'Unknown error');
+        setFetchStatus(`Fetch failed (likely CORS or blocked). ${msg}. Try enabling the proxy or copy-paste instead.`, 'error');
       }
       el("fetchBtn").disabled = false;
       el("fetchBtn").textContent = "Fetch";
+      el("fetchBtn").removeAttribute('aria-busy');
     });
 
     // File upload support (.txt / .html)

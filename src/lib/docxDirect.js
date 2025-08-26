@@ -1,25 +1,17 @@
 // Fallback using docx library to create a simple, clean document
 export async function generateDirectDocx(suggestions) {
-  const { Document, Packer, Paragraph, HeadingLevel, TextRun } = window.docx;
-  const doc = new Document({
-    sections: [{
-      properties: {},
-      children: [
-        new Paragraph({ text: 'Profile', heading: HeadingLevel.HEADING_1 }),
-        ...((suggestions.profile||[]).map(t => new Paragraph(t))),
-        new Paragraph({ text: 'Key Skills', heading: HeadingLevel.HEADING_1 }),
-        new Paragraph((suggestions.keySkills||[]).join(', ')),
-        ...((suggestions.experience||[]).flatMap(e => [
-          new Paragraph({ text: e.role, heading: HeadingLevel.HEADING_1 }),
-          ...((e.bullets||[]).map(b => new Paragraph({ children:[ new TextRun({ text: '• ' }), new TextRun(b) ] })))
-        ])),
-        new Paragraph({ text: 'Education', heading: HeadingLevel.HEADING_1 }),
-        ...((suggestions.education||[]).map(t => new Paragraph(t))),
-        new Paragraph({ text: 'Additional', heading: HeadingLevel.HEADING_1 }),
-        ...((suggestions.additional||[]).map(t => new Paragraph(t)))
-      ]
-    }]
-  });
-  const blob = await Packer.toBlob(doc);
-  return blob;
+  // Fallback without docx library: simple .doc file (Word opens) via HTML MIME
+  const esc = s => String(s||'').replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
+  <h1>Profile</h1>
+  <p>${(suggestions.profile||[]).map(esc).join('<br/>')}</p>
+  <h1>Key Skills</h1>
+  <p>${esc((suggestions.keySkills||[]).join(', '))}</p>
+  ${(suggestions.experience||[]).map(e=>`<h1>${esc(e.role)}</h1><ul>${(e.bullets||[]).map(b=>`<li>${esc(b)}</li>`).join('')}</ul>`).join('')}
+  <h1>Education</h1>
+  <p>${(suggestions.education||[]).map(esc).join('<br/>')}</p>
+  <h1>Additional</h1>
+  <p>${(suggestions.additional||[]).map(esc).join('<br/>')}</p>
+  </body></html>`;
+  return new Blob([html], { type: 'application/msword' });
 }

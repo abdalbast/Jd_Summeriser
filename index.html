@@ -32,6 +32,7 @@
     .card { border-radius: var(--radius); box-shadow: var(--elev); }
     .focus-ring:focus { outline: none; box-shadow: 0 0 0 var(--ring) rgba(99,102,241,.5); }
   </style>
+  <script>window.PROXY_URL = null;</script>
 </head>
 <body class="bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100">
   <header class="max-w-6xl mx-auto p-6">
@@ -712,7 +713,7 @@
     });
 
     // BEGIN Tailor CV wiring
-    import('./src/main.js').then(({ fetchReadable, buildSuggestions, downloadDocx }) => {
+    import('./src/main.js').then(({ fetchReadable, buildSuggestions, buildSuggestionsLLM, downloadDocx }) => {
       const srcRadios = document.getElementsByName('jobSrc');
       const tailorPaste = document.getElementById('tailorPaste');
       const tailorUrl = document.getElementById('tailorUrl');
@@ -752,6 +753,10 @@
             if (!jdText.trim()) { setStatus('Please paste the job description.', 'error'); return; }
           }
           const skills = (document.getElementById('targetSkills').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+          if (window.PROXY_URL) {
+            const llm = await buildSuggestionsLLM(window.PROXY_URL + '/api/suggest', jdText, skills, { roles: [] });
+            // Optional: merge llm.llmText into heuristic suggestions
+          }
           lastSuggestions = buildSuggestions(jdText, skills, { roles: [] });
           renderSuggestions(lastSuggestions);
           setStatus('Suggestions ready.', 'success');

@@ -79,3 +79,21 @@ MIT
 - PDF extraction is text-based and may miss complex layouts; for best accuracy, paste plain text.
 - No data leaves your browser.
 - CV uploads: now supports `.txt`, `.pdf` (PDF.js text extraction), and `.docx` (Mammoth.js) entirely in the browser. Prefer text for highest accuracy.
+
+## Tailor CV (New)
+- Open the Tailor CV panel next to Top Skills.
+- Choose job source (Paste/URL), edit Target Skills, optionally upload a .docx template.
+- Click Generate Suggestions to get sectioned, recruiter-friendly additions.
+- Click Download Tailored CV (.docx).
+
+### Template placeholders
+In your .docx template, add placeholders such as:
+- {{PROFILE}} (1–2 lines)
+- {{KEY_SKILLS}} (bullets joined by line breaks)
+- {{EXP_ROLE1}}, {{EXP_ROLE2}} (bullets joined by line breaks)
+- {{EDUCATION}}, {{ADDITIONAL}}
+
+### LLM refinement (optional & secure)
+- Do not put API keys in the client. Deploy the proxy in `api-proxy/` (e.g., Vercel), set env var `OPENAI_API_KEY`.
+- After deploy, set `window.PROXY_URL = 'https://your-vercel-deployment-url'` in `index.html`.
+- The app will call `POST {PROXY_URL}/api/suggest` with JD, skills, and optional CV meta, and merge the result.

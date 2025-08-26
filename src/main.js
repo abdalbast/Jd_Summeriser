@@ -13,6 +13,13 @@ export async function fetchReadable(url) {
   throw new Error('Blocked. Please paste the text.');
 }
 
+export async function buildSuggestionsLLM(proxyUrl, jdText, skills, userCvMeta) {
+  const r = await fetch(proxyUrl, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jdText, targetSkills: skills, userCvMeta }) });
+  if (!r.ok) throw new Error('Proxy failed');
+  const data = await r.json();
+  return { llmText: data.text };
+}
+
 export function buildSuggestions(jdText, skills, userCvMeta) {
   return generateSuggestions({ jdText, targetSkills: skills, userCvMeta });
 }

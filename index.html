@@ -34,8 +34,11 @@
 
     <div class="mt-6">
       <label class="block text-sm font-medium mb-2">Or fetch from URL (CORS permitting)</label>
-      <div class="flex gap-2">
+      <div class="flex gap-2 items-center flex-wrap">
         <input id="jdUrl" type="url" class="flex-1 p-2 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" placeholder="https://example.com/job-posting" />
+        <label class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+          <input id="useProxy" type="checkbox" class="rounded border-slate-300 dark:border-slate-600" /> Use CORS proxy
+        </label>
         <button id="fetchBtn" class="px-4 py-2 rounded bg-slate-800 text-white hover:bg-black">Fetch</button>
       </div>
       <p class="text-xs text-slate-500 mt-2">Note: Some sites block cross-origin fetches. If it fails, please copy-paste instead.</p>
@@ -371,23 +374,45 @@
       renderResults({ top10: [], countsByCategory: {}, customCounts: {}, meta: {} });
     });
 
+    function buildProxyUrl(raw) {
+      try {
+        const u = new URL(raw);
+        const path = u.pathname + (u.search || "") + (u.hash || "");
+        return `https://r.jina.ai/http://${u.host}${path}`;
+      } catch (_) { return raw; }
+    }
+
     el("fetchBtn").addEventListener("click", async () => {
-      const url = el("jdUrl").value.trim();
-      if (!url) return;
+      const raw = el("jdUrl").value.trim();
+      if (!raw) return;
+      const wantProxy = !!document.getElementById('useProxy')?.checked;
+      const tryUrls = [];
+      if (wantProxy) {
+        tryUrls.push(buildProxyUrl(raw));
+      }
+      tryUrls.push(raw); // always try direct as well (or vice versa)
+
       el("fetchBtn").disabled = true;
       el("fetchBtn").textContent = "Fetching…";
-      try {
-        const res = await fetch(url, {mode: "cors"});
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const html = await res.text();
-        const text = htmlToText(html);
-        el("jdText").value = text;
-      } catch (e) {
-        alert("Fetch failed (likely CORS). Please copy-paste instead.\n\n" + e.message);
-      } finally {
-        el("fetchBtn").disabled = false;
-        el("fetchBtn").textContent = "Fetch";
+      let lastErr = null;
+      for (const u of tryUrls) {
+        try {
+          const res = await fetch(u, {mode: "cors"});
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const html = await res.text();
+          const text = htmlToText(html);
+          el("jdText").value = text;
+          lastErr = null;
+          break;
+        } catch (e) {
+          lastErr = e;
+        }
       }
+      if (lastErr) {
+        alert("Fetch failed (likely CORS). Please copy-paste instead.\n\n" + lastErr.message);
+      }
+      el("fetchBtn").disabled = false;
+      el("fetchBtn").textContent = "Fetch";
     });
 
     // File upload support (.txt / .html)

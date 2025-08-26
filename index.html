@@ -21,6 +21,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <!-- Mammoth.js for client-side .docx to text -->
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+  <script type="module" src="./src/main.js"></script>
   <style>
     :root { --ring: 2px; --radius: 10px; --elev: 0 1px 2px rgba(0,0,0,.06); --dur: 160ms; }
     @media (prefers-reduced-motion: reduce) { * { animation-duration: 1ms !important; transition-duration: 1ms !important; } }
@@ -108,6 +109,48 @@
       </div>
       <div id="results" class="grid md:grid-cols-2 gap-4"></div>
     </section>
+
+    <!-- BEGIN UI PASS: Tailor CV panel -->
+    <section class="mt-8" aria-labelledby="tailorLabel">
+      <h2 id="tailorLabel" class="text-xl font-semibold mb-2">Tailor CV</h2>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="card p-4 bg-white dark:bg-slate-800 border dark:border-slate-700">
+          <fieldset class="mb-3">
+            <legend class="text-sm font-medium">Job Source</legend>
+            <div class="mt-2 flex items-center gap-4 text-sm">
+              <label class="inline-flex items-center gap-2"><input type="radio" name="jobSrc" value="paste" checked> Paste Text</label>
+              <label class="inline-flex items-center gap-2"><input type="radio" name="jobSrc" value="url"> URL</label>
+            </div>
+          </fieldset>
+          <div id="tailorPaste">
+            <label class="block text-sm font-medium mb-1" for="tailorJdText">Paste Job Description</label>
+            <textarea id="tailorJdText" class="w-full h-40 p-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus-ring"></textarea>
+          </div>
+          <div id="tailorUrl" class="hidden">
+            <label class="block text-sm font-medium mb-1" for="tailorJdUrl">Job URL</label>
+            <input id="tailorJdUrl" type="url" class="w-full h-11 px-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus-ring" placeholder="https://example.com/post" />
+          </div>
+          <label class="block text-sm font-medium mt-3 mb-1" for="targetSkills">Target Skills</label>
+          <input id="targetSkills" type="text" class="w-full h-11 px-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus-ring" value="Snowflake, Scala, Problem solving, Leadership" />
+          <label class="block text-sm font-medium mt-3 mb-1" for="templateDocx">Upload Original CV (.docx template, optional)</label>
+          <input id="templateDocx" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="w-full h-11 px-3 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus-ring" />
+          <div class="mt-4 flex gap-2">
+            <button id="genSuggBtn" class="h-11 px-4 rounded bg-indigo-600 text-white hover:bg-indigo-700">Generate Suggestions</button>
+            <button id="downloadDocxBtn" class="h-11 px-4 rounded bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100">Download Tailored CV (.docx)</button>
+          </div>
+          <p id="tailorStatus" class="text-xs mt-2"></p>
+        </div>
+        <div class="card p-4 bg-white dark:bg-slate-800 border dark:border-slate-700">
+          <div class="flex items-center gap-4 text-sm border-b dark:border-slate-700 mb-3">
+            <button id="tabSugg" class="py-2 px-2 border-b-2 border-indigo-600">Suggestions</button>
+            <button id="tabDiff" class="py-2 px-2">Diff Preview</button>
+          </div>
+          <div id="suggPane" class="space-y-3 text-sm"></div>
+          <div id="diffPane" class="hidden space-y-3 text-sm"></div>
+        </div>
+      </div>
+    </section>
+    <!-- END UI PASS -->
   </main>
   <footer class="max-w-6xl mx-auto px-6 py-8 text-xs text-slate-500">Built with HTML, Tailwind, and vanilla JS. All analysis runs in your browser.</footer>
 
@@ -663,6 +706,84 @@
       runAnalysis();
       announcer.textContent = 'JD and CV matched.';
     });
+
+    // BEGIN Tailor CV wiring
+    import('./src/main.js').then(({ fetchReadable, buildSuggestions, downloadDocx }) => {
+      const srcRadios = document.getElementsByName('jobSrc');
+      const tailorPaste = document.getElementById('tailorPaste');
+      const tailorUrl = document.getElementById('tailorUrl');
+      const statusEl = document.getElementById('tailorStatus');
+      const suggPane = document.getElementById('suggPane');
+      const diffPane = document.getElementById('diffPane');
+      let lastSuggestions = null;
+      let templateFile = null;
+
+      function setStatus(msg, kind='info') {
+        const map = { info: 'text-slate-600', success: 'text-emerald-700', error: 'text-rose-700' };
+        statusEl.className = 'text-xs mt-2 ' + (map[kind]||map.info);
+        statusEl.textContent = msg || '';
+      }
+
+      srcRadios.forEach(r => r.addEventListener('change', () => {
+        const v = Array.from(srcRadios).find(x => x.checked)?.value;
+        if (v === 'url') { tailorUrl.classList.remove('hidden'); tailorPaste.classList.add('hidden'); }
+        else { tailorUrl.classList.add('hidden'); tailorPaste.classList.remove('hidden'); }
+      }));
+
+      document.getElementById('templateDocx').addEventListener('change', (e) => {
+        templateFile = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+      });
+
+      document.getElementById('genSuggBtn').addEventListener('click', async () => {
+        try {
+          setStatus('Generating suggestions…');
+          let jdText = '';
+          const src = Array.from(srcRadios).find(x => x.checked)?.value;
+          if (src === 'url') {
+            const u = document.getElementById('tailorJdUrl').value.trim();
+            if (!u) { setStatus('Please enter a job URL.', 'error'); return; }
+            jdText = await fetchReadable(u);
+          } else {
+            jdText = document.getElementById('tailorJdText').value;
+            if (!jdText.trim()) { setStatus('Please paste the job description.', 'error'); return; }
+          }
+          const skills = (document.getElementById('targetSkills').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+          lastSuggestions = buildSuggestions(jdText, skills, { roles: [] });
+          renderSuggestions(lastSuggestions);
+          setStatus('Suggestions ready.', 'success');
+        } catch (e) {
+          setStatus(e.message || 'Failed to fetch or generate.', 'error');
+        }
+      });
+
+      document.getElementById('downloadDocxBtn').addEventListener('click', async () => {
+        if (!lastSuggestions) { setStatus('Generate suggestions first.', 'error'); return; }
+        await downloadDocx({ suggestions: lastSuggestions, templateFile, filename: 'Abdalbast_Khdhir_CV_Tailored.docx' });
+      });
+
+      function renderSuggestions(s) {
+        suggPane.innerHTML = '';
+        const sections = [
+          ['Profile', s.profile||[]],
+          ['Key Skills', (s.keySkills||[]).map(k=>`• ${k}`)],
+          ['Experience', (s.experience||[]).flatMap(e=>[`— ${e.role}`].concat((e.bullets||[]).map(b=>`• ${b}`)))],
+          ['Education', s.education||[]],
+          ['Additional', s.additional||[]],
+        ];
+        sections.forEach(([title, items]) => {
+          const div = document.createElement('div');
+          div.innerHTML = `<h3 class="font-medium mb-1">${title}</h3>` +
+            `<ul class="list-disc pl-5 space-y-1">${items.map(i=>`<li>${i}</li>`).join('')}</ul>`;
+          suggPane.appendChild(div);
+        });
+        // Diff stub
+        diffPane.innerHTML = `<details><summary class="cursor-pointer">Profile</summary><div class="mt-2">${(s.profile||[]).join(' ')}</div></details>`;
+      }
+
+      document.getElementById('tabSugg').addEventListener('click', () => { suggPane.classList.remove('hidden'); diffPane.classList.add('hidden'); });
+      document.getElementById('tabDiff').addEventListener('click', () => { diffPane.classList.remove('hidden'); suggPane.classList.add('hidden'); });
+    });
+    // END Tailor CV wiring
   </script>
 </body>
 </html>

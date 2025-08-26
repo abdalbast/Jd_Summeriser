@@ -78,3 +78,4 @@ MIT
 ### Notes
 - PDF extraction is text-based and may miss complex layouts; for best accuracy, paste plain text.
 - No data leaves your browser.
+- CV uploads: now supports `.txt`, `.pdf` (PDF.js text extraction), and `.docx` (Mammoth.js) entirely in the browser. Prefer text for highest accuracy.
